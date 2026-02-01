@@ -59,13 +59,13 @@ python third_party/cleanrl/v1.0.0/ppo.py --env-id CartPole-v1 --total-timesteps 
 ```
 
 Dependencies for the CleanRL script (in addition to this repo's deps):
-- `gym`
+- `gymnasium`
 - `stable-baselines3`
 - `tensorboard` (and optional `wandb` if `--track`)
 
 Quick install:
 ```bash
-uv pip install gym stable-baselines3 tensorboard
+uv pip install gymnasium stable-baselines3 tensorboard
 ```
 
 Integration tests (short runs on CartPole):
