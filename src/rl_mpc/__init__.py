@@ -1,2 +1,7 @@
-def hello() -> str:
-    return "Hello from rl-mpc!"
+"""RL + MPC baselines for Gymnasium CartPole."""
+
+__all__ = [
+    "__version__",
+]
+
+__version__ = "0.1.0"

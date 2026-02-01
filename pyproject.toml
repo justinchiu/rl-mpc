@@ -7,8 +7,17 @@ authors = [
     { name = "Justin Chiu", email = "chiu.justin.t@gmail.com" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "chz>=0.4.0",
+    "gymnasium>=0.29.0",
+    "pufferlib>=3.0.0,<4.0.0",
+    "torch>=2.10.0",
+    "tqdm>=4.66.0",
+]
 
 [build-system]
 requires = ["uv_build>=0.8.22,<0.9.0"]
 build-backend = "uv_build"
+
+[tool.uv]
+no-build-isolation = true
