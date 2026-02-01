@@ -11,8 +11,11 @@ dependencies = [
     "chz>=0.4.0",
     "gymnasium>=0.29.0",
     "pufferlib>=3.0.0,<4.0.0",
+    "pygame>=2.6.1",
+    "tensorboard>=2.20.0",
     "torch>=2.10.0",
     "tqdm>=4.66.0",
+    "wandb>=0.24.1",
 ]
 
 [build-system]
