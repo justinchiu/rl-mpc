@@ -11,6 +11,12 @@ from tqdm import trange
 
 from rl_mpc.components.batcher import RolloutBatcher
 from rl_mpc.components.collector import OnPolicyCollector
+from rl_mpc.components.data_source import (
+    MixedRolloutSource,
+    ReplayRolloutSource,
+    RolloutReplayBuffer,
+    StreamRolloutSource,
+)
 from rl_mpc.components.env import EnvConfig, make_envs
 from rl_mpc.components.packer import RolloutPacker
 from rl_mpc.components.policy import PolicyConfig, build_policy
@@ -48,6 +54,15 @@ class PPOConfig:
     wandb_name: str | None = None
     wandb_tags: tuple[str, ...] = ()
     wandb_mode: Literal["online", "offline", "disabled"] = "online"
+    replay: PPOReplayConfig = PPOReplayConfig()
+
+
+@chz.chz
+class PPOReplayConfig:
+    enabled: bool = False
+    capacity: int = 64
+    off_policy_fraction: float = 0.0
+    min_replay: int = 4
 
 
 def train(cfg: PPOConfig) -> None:
@@ -102,6 +117,33 @@ def train(cfg: PPOConfig) -> None:
     collector = OnPolicyCollector(envs, policy, value, device)
     packer = RolloutPacker(cfg.rollout_steps, num_envs, obs_dim)
     batcher = RolloutBatcher(cfg.batch_size, rng)
+    stream_source = StreamRolloutSource(
+        collector=collector,
+        packer=packer,
+        value=value,
+        gamma=cfg.gamma,
+        gae_lambda=cfg.gae_lambda,
+        obs_array=obs_array,
+        device=device,
+    )
+    replay_buffer = RolloutReplayBuffer(cfg.replay.capacity)
+    replay_source = ReplayRolloutSource(
+        buffer=replay_buffer,
+        value=value,
+        gamma=cfg.gamma,
+        gae_lambda=cfg.gae_lambda,
+        device=device,
+    )
+    off_policy_fraction = cfg.replay.off_policy_fraction if cfg.replay.enabled else 0.0
+    min_replay = cfg.replay.min_replay if cfg.replay.enabled else 0
+    data_source = MixedRolloutSource(
+        stream_source=stream_source,
+        replay_source=replay_source,
+        replay_buffer=replay_buffer,
+        off_policy_fraction=off_policy_fraction,
+        min_replay=min_replay,
+        rng=rng,
+    )
 
     steps_per_update = cfg.rollout_steps * num_envs
     num_updates = max(1, math.ceil(cfg.total_steps / steps_per_update))
@@ -127,33 +169,22 @@ def train(cfg: PPOConfig) -> None:
 
     pbar = trange(num_updates, desc="PPO")
     for update in pbar:
-        stream = collector.stream(obs_array, cfg.rollout_steps)
-        rollout, last_obs = packer.pack(stream)
-        obs_array = stream.last_obs if stream.last_obs is not None else last_obs
+        batch = data_source.next()
         global_step += cfg.rollout_steps * num_envs
+        on_policy_chunk = data_source.last_on_policy.chunk if data_source.last_on_policy else None
 
         completed_returns: list[float] = []
         completed_lens: list[int] = []
-        for t in range(cfg.rollout_steps):
-            episode_returns += rollout.rewards[t]
-            episode_lens += 1
-            for i in range(num_envs):
-                if rollout.dones[t, i] > 0.0:
-                    completed_returns.append(float(episode_returns[i]))
-                    completed_lens.append(int(episode_lens[i]))
-                    episode_returns[i] = 0.0
-                    episode_lens[i] = 0
-
-        with torch.no_grad():
-            obs_tensor = torch.as_tensor(obs_array, dtype=torch.float32, device=device)
-            last_values = value(obs_tensor).squeeze(-1).cpu().numpy()
-
-        advantages, returns = rollout.compute_advantages(
-            last_values,
-            cfg.gamma,
-            cfg.gae_lambda,
-        )
-        batch = rollout.flatten(advantages, returns)
+        if on_policy_chunk is not None:
+            for t in range(cfg.rollout_steps):
+                episode_returns += on_policy_chunk.rewards[t]
+                episode_lens += 1
+                for i in range(num_envs):
+                    if on_policy_chunk.dones[t, i] > 0.0:
+                        completed_returns.append(float(episode_returns[i]))
+                        completed_lens.append(int(episode_lens[i]))
+                        episode_returns[i] = 0.0
+                        episode_lens[i] = 0
         metrics = trainer.update(
             batch=batch,
             batcher=batcher,

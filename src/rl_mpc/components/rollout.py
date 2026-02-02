@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from rl_mpc.components.types import RolloutBatch, StepBatch
+from rl_mpc.components.types import RolloutBatch, RolloutChunk, StepBatch
 
 
 class RolloutBuffer:
@@ -82,3 +82,36 @@ def explained_variance(targets: np.ndarray, predictions: np.ndarray) -> float:
     if var_target <= 1e-8:
         return float("nan")
     return 1.0 - float(np.var(targets - predictions)) / var_target
+
+
+def chunk_to_batch(
+    chunk: RolloutChunk,
+    last_values: np.ndarray,
+    gamma: float,
+    gae_lambda: float,
+    values_override: np.ndarray | None = None,
+) -> RolloutBatch:
+    rewards = chunk.rewards
+    dones = chunk.dones
+    values = values_override if values_override is not None else chunk.values
+
+    rollout_steps, num_envs = rewards.shape
+    advantages = np.zeros((rollout_steps, num_envs), dtype=np.float32)
+    last_adv = np.zeros(num_envs, dtype=np.float32)
+    for t in reversed(range(rollout_steps)):
+        next_values = last_values if t == rollout_steps - 1 else values[t + 1]
+        next_nonterminal = 1.0 - dones[t]
+        delta = rewards[t] + gamma * next_values * next_nonterminal - values[t]
+        last_adv = delta + gamma * gae_lambda * next_nonterminal * last_adv
+        advantages[t] = last_adv
+    returns = advantages + values
+
+    obs_dim = int(np.prod(chunk.obs.shape[2:]))
+    return RolloutBatch(
+        obs=chunk.obs.reshape(-1, obs_dim),
+        actions=chunk.actions.reshape(-1),
+        logp=chunk.logp.reshape(-1),
+        advantages=advantages.reshape(-1),
+        returns=returns.reshape(-1),
+        values=values.reshape(-1),
+    )

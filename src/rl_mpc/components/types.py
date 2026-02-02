@@ -37,6 +37,12 @@ class RolloutChunk(BaseModel):
     next_obs: np.ndarray
 
 
+class RolloutSample(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    batch: RolloutBatch
+    chunk: RolloutChunk
+
+
 class TransitionBatch(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     obs: torch.Tensor
