@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 import torch
 
+from rl_mpc.components.types import TransitionBatch
+
 
 class ReplayBuffer:
     def __init__(self, obs_dim: int, size: int, device: torch.device) -> None:
@@ -32,17 +34,17 @@ class ReplayBuffer:
         self.ptr = (self.ptr + 1) % self.size
         self.count = min(self.count + 1, self.size)
 
-    def sample(self, batch_size: int) -> dict[str, torch.Tensor]:
+    def sample(self, batch_size: int) -> TransitionBatch:
         if self.count < batch_size:
             raise ValueError("Not enough samples in replay buffer")
         idx = np.random.randint(0, self.count, size=batch_size)
-        return {
-            "obs": torch.as_tensor(self.obs[idx], device=self.device),
-            "actions": torch.as_tensor(self.actions[idx], device=self.device),
-            "rewards": torch.as_tensor(self.rewards[idx], device=self.device),
-            "next_obs": torch.as_tensor(self.next_obs[idx], device=self.device),
-            "dones": torch.as_tensor(self.dones[idx], device=self.device),
-        }
+        return TransitionBatch(
+            obs=torch.as_tensor(self.obs[idx], device=self.device),
+            actions=torch.as_tensor(self.actions[idx], device=self.device),
+            rewards=torch.as_tensor(self.rewards[idx], device=self.device),
+            next_obs=torch.as_tensor(self.next_obs[idx], device=self.device),
+            dones=torch.as_tensor(self.dones[idx], device=self.device),
+        )
 
     def __len__(self) -> int:
         return self.count

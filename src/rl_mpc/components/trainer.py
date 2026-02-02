@@ -6,6 +6,16 @@ import chz
 import torch
 from torch import nn
 from torch.nn import functional as F
+from pydantic import BaseModel, ConfigDict
+
+from rl_mpc.components.types import TransitionBatch
+
+
+@chz.chz
+class MBMPCWeights:
+    policy: float = 1.0
+    value: float = 1.0
+    dynamics: float = 1.0
 
 
 @chz.chz
@@ -18,6 +28,28 @@ class MBMPCTrainerConfig:
     lr_dynamics: float = 1e-3
     max_grad_norm: float = 10.0
     policy_loss: Literal["bc", "ac"] = "bc"
+    weights: MBMPCWeights = MBMPCWeights()
+
+
+class MBMPCLosses(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    policy: torch.Tensor
+    value: torch.Tensor
+    dynamics: torch.Tensor
+
+    def total(self, weights: MBMPCWeights) -> torch.Tensor:
+        return (
+            weights.policy * self.policy
+            + weights.value * self.value
+            + weights.dynamics * self.dynamics
+        )
+
+
+class MBMPCMetrics(BaseModel):
+    policy_loss: float
+    value_loss: float
+    dynamics_loss: float
+    total_loss: float
 
 
 def _one_hot(actions: torch.Tensor, num_actions: int) -> torch.Tensor:
@@ -45,12 +77,12 @@ class MBMPCTrainer:
         self.value_opt = torch.optim.Adam(self.value.parameters(), lr=cfg.lr_value)
         self.dynamics_opt = torch.optim.Adam(self.dynamics.parameters(), lr=cfg.lr_dynamics)
 
-    def update(self, batch: dict[str, torch.Tensor]) -> dict[str, float]:
-        obs_batch = batch["obs"]
-        actions_batch = batch["actions"]
-        next_obs_batch = batch["next_obs"]
-        rewards_batch = batch["rewards"]
-        dones_batch = batch["dones"]
+    def update(self, batch: TransitionBatch) -> MBMPCMetrics:
+        obs_batch = batch.obs
+        actions_batch = batch.actions
+        next_obs_batch = batch.next_obs
+        rewards_batch = batch.rewards
+        dones_batch = batch.dones
 
         dyn_in = torch.cat([obs_batch, _one_hot(actions_batch, self.num_actions)], dim=-1)
         pred_next = self.dynamics(dyn_in)
@@ -72,23 +104,31 @@ class MBMPCTrainer:
         else:
             policy_loss = F.cross_entropy(logits, actions_batch)
 
+        losses = MBMPCLosses(
+            policy=policy_loss,
+            value=value_loss,
+            dynamics=dyn_loss,
+        )
+        total_loss = losses.total(self.cfg.weights)
+
         self.dynamics_opt.zero_grad(set_to_none=True)
-        dyn_loss.backward()
+        (self.cfg.weights.dynamics * dyn_loss).backward()
         nn.utils.clip_grad_norm_(self.dynamics.parameters(), self.cfg.max_grad_norm)
         self.dynamics_opt.step()
 
         self.value_opt.zero_grad(set_to_none=True)
-        value_loss.backward()
+        (self.cfg.weights.value * value_loss).backward()
         nn.utils.clip_grad_norm_(self.value.parameters(), self.cfg.max_grad_norm)
         self.value_opt.step()
 
         self.policy_opt.zero_grad(set_to_none=True)
-        policy_loss.backward()
+        (self.cfg.weights.policy * policy_loss).backward()
         nn.utils.clip_grad_norm_(self.policy.parameters(), self.cfg.max_grad_norm)
         self.policy_opt.step()
 
-        return {
-            "dynamics_loss": float(dyn_loss.item()),
-            "value_loss": float(value_loss.item()),
-            "policy_loss": float(policy_loss.item()),
-        }
+        return MBMPCMetrics(
+            dynamics_loss=float(dyn_loss.item()),
+            value_loss=float(value_loss.item()),
+            policy_loss=float(policy_loss.item()),
+            total_loss=float(total_loss.item()),
+        )

@@ -186,15 +186,15 @@ def train(cfg: PPOConfig) -> None:
             normalize_advantage=cfg.normalize_advantage,
             rng=rng,
         )
-        explained = explained_variance(batch["returns"], batch["values"])
+        explained = explained_variance(batch.returns, batch.values)
 
-        if metrics:
-            mean_policy_loss = metrics["policy_loss"]
-            mean_value_loss = metrics["value_loss"]
-            mean_entropy = metrics["entropy"]
-            mean_total_loss = metrics["loss"]
-            mean_approx_kl = metrics["approx_kl"]
-            mean_clip_frac = metrics["clip_frac"]
+        mean_policy_loss = metrics.policy_loss
+        mean_value_loss = metrics.value_loss
+        mean_entropy = metrics.entropy
+        mean_total_loss = metrics.loss
+        mean_approx_kl = metrics.approx_kl
+        mean_clip_frac = metrics.clip_frac
+        if mean_policy_loss or mean_value_loss or mean_total_loss:
             pbar.set_postfix(
                 policy_loss=f"{mean_policy_loss:.3f}",
                 value_loss=f"{mean_value_loss:.3f}",

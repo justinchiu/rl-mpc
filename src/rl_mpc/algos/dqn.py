@@ -124,10 +124,10 @@ def train(cfg: DQNConfig) -> None:
 
         if step >= cfg.learning_starts and len(buffer) >= cfg.batch_size and step % cfg.train_freq == 0:
             batch = buffer.sample(cfg.batch_size)
-            q_values = q_net(batch["obs"]).gather(1, batch["actions"].unsqueeze(1)).squeeze(1)
+            q_values = q_net(batch.obs).gather(1, batch.actions.unsqueeze(1)).squeeze(1)
             with torch.no_grad():
-                next_q = target_net(batch["next_obs"]).max(dim=1).values
-                target = batch["rewards"] + cfg.gamma * (1.0 - batch["dones"]) * next_q
+                next_q = target_net(batch.next_obs).max(dim=1).values
+                target = batch.rewards + cfg.gamma * (1.0 - batch.dones) * next_q
             loss = F.smooth_l1_loss(q_values, target)
 
             optimizer.zero_grad(set_to_none=True)

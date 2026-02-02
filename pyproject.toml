@@ -13,6 +13,7 @@ dependencies = [
     "moviepy>=1.0.3",
     "pufferlib>=3.0.0,<4.0.0",
     "pygame>=2.6.1",
+    "pydantic>=2.7.0",
     "stable-baselines3>=2.7.1",
     "streamlit>=1.33.0",
     "tensorboard>=2.20.0",

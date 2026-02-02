@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from rl_mpc.components.types import RolloutBatch
+
 
 class RolloutBuffer:
     def __init__(self, rollout_steps: int, num_envs: int, obs_dim: int) -> None:
@@ -53,15 +55,15 @@ class RolloutBuffer:
         self,
         advantages: np.ndarray,
         returns: np.ndarray,
-    ) -> dict[str, np.ndarray]:
-        return {
-            "obs": self.obs.reshape(-1, self.obs_dim),
-            "actions": self.actions.reshape(-1),
-            "logp": self.logp.reshape(-1),
-            "advantages": advantages.reshape(-1),
-            "returns": returns.reshape(-1),
-            "values": self.values.reshape(-1),
-        }
+    ) -> RolloutBatch:
+        return RolloutBatch(
+            obs=self.obs.reshape(-1, self.obs_dim),
+            actions=self.actions.reshape(-1),
+            logp=self.logp.reshape(-1),
+            advantages=advantages.reshape(-1),
+            returns=returns.reshape(-1),
+            values=self.values.reshape(-1),
+        )
 
 
 def explained_variance(targets: np.ndarray, predictions: np.ndarray) -> float:
