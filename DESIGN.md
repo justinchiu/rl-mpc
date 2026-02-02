@@ -133,6 +133,32 @@ Trainer ---> |   DataSource     | -----> Batcher ----> Trainer.update(...)
 
 This keeps training loops identical across algorithms: they simply ask a
 DataSource for the next batch/rollout and then update components.
+
+## Replay Prioritization Strategies
+Replay sampling should be pluggable via an enum-like config:
+
+```
+class ReplayPriority(Enum):
+    UNIFORM = "uniform"
+    RECENCY = "recency"
+    TOP_RETURN = "top_return"
+    ADVANTAGE = "advantage"
+    TD_ERROR = "td_error"
+    PER = "per"
+    MIXED = "mixed"
+```
+
+Suggested behaviors:
+- **uniform**: random chunks (baseline).
+- **recency**: bias toward latest chunks (exponential decay or window).
+- **top_return**: prefer chunks with highest episode return.
+- **advantage**: prefer chunks with max/mean |A_t|.
+- **td_error**: prefer chunks with max/mean |δ_t| (value TD error).
+- **per**: proportional/rank-based prioritized replay with IS weights.
+- **mixed**: configurable mixture of strategies (e.g., 70% uniform + 30% top_return).
+
+Priorities can be computed per-step then reduced per-chunk (max/mean),
+and updated when value/policy changes.
 ```
 
 ## Example Composition
