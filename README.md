@@ -57,6 +57,11 @@ Optional logging and saving:
 python scripts/sb3_cartpole.py algo=ppo log_dir=runs/sb3 save_path=sb3_cartpole
 ```
 
+Visualize a few trajectories after training:
+```bash
+python scripts/sb3_cartpole.py algo=ppo total_timesteps=50000 render_episodes=3 render_delay_ms=20
+```
+
 ## Notes
 - PufferLib wraps a Gymnasium CartPole-v1 env; env stepping runs on CPU, while networks can run on GPU via `device=cuda`.
 - MPC uses the CartPole dynamics consistent with Gymnasium's implementation for rollouts.
