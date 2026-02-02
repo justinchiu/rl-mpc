@@ -113,6 +113,26 @@ Batcher -> RolloutBatch minibatches (flat, shuffled)
 This mirrors LLM-style data pipelines: *steps* are streamed, *packed* into
 fixed-length rollouts, then *batched* for SGD. Episode boundaries are carried
 via `done` flags, so rollouts can span multiple episodes safely.
+
+## Unified Data Source (Replay Buffer + Stream)
+A single abstraction can serve both on-policy streaming and off-policy replay:
+
+```
+            +------------------+
+Trainer ---> |   DataSource     | -----> Batcher ----> Trainer.update(...)
+            +------------------+
+               ^            ^
+               |            |
+        StreamSource     ReplaySource
+        (live steps)     (replay buffer)
+```
+
+- **StreamSource** wraps the collector/packer pipeline and yields fresh rollouts.
+- **ReplaySource** wraps a replay buffer and yields sampled batches (or packed
+  sequences if needed).
+
+This keeps training loops identical across algorithms: they simply ask a
+DataSource for the next batch/rollout and then update components.
 ```
 
 ## Example Composition
