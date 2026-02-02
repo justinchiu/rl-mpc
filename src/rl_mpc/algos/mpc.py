@@ -7,6 +7,7 @@ from tqdm import trange
 from rl_mpc.cartpole_dynamics import step_cartpole
 from rl_mpc.components.env import EnvConfig, make_envs
 from rl_mpc.components.planner import RandomShootingConfig, RandomShootingPlanner
+from rl_mpc.components.video import VideoConfig, VideoLogger
 from rl_mpc.utils import set_seed
 
 
@@ -17,6 +18,7 @@ class MPCConfig:
     seed: int = 0
     env: EnvConfig = EnvConfig()
     planner: RandomShootingConfig = RandomShootingConfig()
+    video: VideoConfig = VideoConfig()
 
 
 def run(cfg: MPCConfig) -> None:
@@ -39,10 +41,16 @@ def run(cfg: MPCConfig) -> None:
     n_actions = int(action_space.n)
 
     planner = RandomShootingPlanner(cfg.planner, step_cartpole, n_actions, cfg.gamma)
+    video_rng = np.random.default_rng(cfg.video.seed) if cfg.video.deterministic else rng
+    video_logger = VideoLogger(cfg.env.env_id, cfg.video)
+
+    def act_fn(obs: np.ndarray) -> int:
+        return planner.act(obs, video_rng)
 
     episode_returns = np.zeros(num_envs, dtype=np.float32)
     episode_lens = np.zeros(num_envs, dtype=np.int32)
     episode = 0
+    global_step = 0
     pbar = trange(cfg.episodes, desc="MPC")
     while episode < cfg.episodes:
         actions = np.zeros(num_envs, dtype=np.int64)
@@ -68,5 +76,7 @@ def run(cfg: MPCConfig) -> None:
                 episode_lens[i] = 0
 
         obs_array = next_obs_array
+        global_step += num_envs
+        video_logger.maybe_record(global_step, act_fn)
     pbar.close()
     envs.close()

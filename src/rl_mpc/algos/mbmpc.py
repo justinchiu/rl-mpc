@@ -12,6 +12,7 @@ from rl_mpc.components.planner import PolicyGuidedConfig, PolicyGuidedPlanner
 from rl_mpc.components.policy import PolicyConfig, build_policy
 from rl_mpc.components.trainer import MBMPCTrainer, MBMPCTrainerConfig
 from rl_mpc.components.value import ValueConfig, build_value
+from rl_mpc.components.video import VideoConfig, VideoLogger
 from rl_mpc.replay_buffer import ReplayBuffer
 from rl_mpc.utils import get_device, set_seed
 
@@ -30,6 +31,7 @@ class MBMPCConfig:
     policy: PolicyConfig = PolicyConfig()
     value: ValueConfig = ValueConfig()
     dynamics: DynamicsConfig = DynamicsConfig()
+    video: VideoConfig = VideoConfig()
 
 
 def train(cfg: MBMPCConfig) -> None:
@@ -63,12 +65,28 @@ def train(cfg: MBMPCConfig) -> None:
         is_done,
     )
     trainer = MBMPCTrainer(policy, value, dynamics, n_actions, cfg.trainer, cfg.gamma)
+    video_logger = VideoLogger(cfg.env.env_id, cfg.video)
+    video_torch_rng = torch.Generator(device=device)
+    video_seed = cfg.video.seed if cfg.video.seed is not None else cfg.seed + 123
+    video_torch_rng.manual_seed(video_seed)
+
+    def act_fn(obs: np.ndarray) -> int:
+        obs_array = np.asarray(obs, dtype=np.float32)
+        with torch.no_grad():
+            return planner.act(
+                obs_array,
+                policy,
+                dynamics,
+                value,
+                video_torch_rng,
+            )
 
     buffer = ReplayBuffer(obs_dim, cfg.buffer_size, device)
 
     episode_returns = np.zeros(num_envs, dtype=np.float32)
     episode_lens = np.zeros(num_envs, dtype=np.int32)
     episode = 0
+    global_step = 0
 
     for step in trange(cfg.total_steps, desc="MBMPC"):
         if step < cfg.warmup_steps:
@@ -115,6 +133,8 @@ def train(cfg: MBMPCConfig) -> None:
                 episode_lens[i] = 0
 
         obs_array = next_obs_array
+        global_step += num_envs
+        video_logger.maybe_record(global_step, act_fn)
 
         if (
             step >= cfg.warmup_steps

@@ -39,6 +39,11 @@ PPO with W&B logging:
 python -m rl_mpc.algos.ppo total_steps=200000 env.num_envs=4 wandb=true wandb_project=rl-mpc
 ```
 
+Video logging (works for all in-repo algos via Gymnasium `RecordVideo`):
+```bash
+python -m rl_mpc.algos.ppo total_steps=200000 video.dir=videos/ppo video.every_steps=20000 video.episodes=1
+```
+
 MPC (random-shooting over action sequences):
 ```bash
 python -m rl_mpc.algos.mpc episodes=10 planner.horizon=15 planner.num_sequences=1000

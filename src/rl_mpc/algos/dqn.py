@@ -9,6 +9,7 @@ from tqdm import trange
 
 from rl_mpc.components.env import EnvConfig, make_envs
 from rl_mpc.components.policy import PolicyConfig, build_policy
+from rl_mpc.components.video import VideoConfig, VideoLogger
 from rl_mpc.replay_buffer import ReplayBuffer
 from rl_mpc.utils import get_device, linear_schedule, set_seed
 
@@ -31,6 +32,7 @@ class DQNConfig:
     device: str = "auto"
     env: EnvConfig = EnvConfig()
     policy: PolicyConfig = PolicyConfig()
+    video: VideoConfig = VideoConfig()
 
 
 def train(cfg: DQNConfig) -> None:
@@ -58,9 +60,20 @@ def train(cfg: DQNConfig) -> None:
     optimizer = torch.optim.Adam(q_net.parameters(), lr=cfg.lr)
     buffer = ReplayBuffer(obs_dim, cfg.buffer_size, device)
 
+    def act_fn(obs: np.ndarray) -> int:
+        obs_tensor = torch.as_tensor(obs, dtype=torch.float32, device=device)
+        if obs_tensor.ndim == 1:
+            obs_tensor = obs_tensor.unsqueeze(0)
+        with torch.no_grad():
+            q_values = q_net(obs_tensor)
+        return int(q_values.argmax(dim=1).item())
+
+    video_logger = VideoLogger(cfg.env.env_id, cfg.video)
+
     episode_returns = np.zeros(num_envs, dtype=np.float32)
     episode_lens = np.zeros(num_envs, dtype=np.int32)
     episode = 0
+    global_step = 0
 
     for step in trange(cfg.total_steps, desc="DQN"):
         eps = linear_schedule(cfg.eps_start, cfg.eps_end, cfg.eps_decay_steps, step)
@@ -106,6 +119,8 @@ def train(cfg: DQNConfig) -> None:
                 episode_lens[i] = 0
 
         obs_array = next_obs_array
+        global_step += num_envs
+        video_logger.maybe_record(global_step, act_fn)
 
         if step >= cfg.learning_starts and len(buffer) >= cfg.batch_size and step % cfg.train_freq == 0:
             batch = buffer.sample(cfg.batch_size)

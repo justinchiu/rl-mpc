@@ -7,6 +7,7 @@ from rl_mpc.envs import make_cartpole_vec
 
 @chz.chz
 class EnvConfig:
+    env_id: str = "CartPole-v1"
     num_envs: int = 1
     vec_backend: str = "multiprocessing"
     num_workers: int | None = None
@@ -21,4 +22,5 @@ def make_envs(cfg: EnvConfig, render_mode: str | None = None) -> object:
         render_mode=render_mode,
         num_workers=cfg.num_workers,
         batch_size=cfg.vec_batch_size,
+        env_id=cfg.env_id,
     )

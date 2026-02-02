@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from __future__ import annotations
-
 from collections.abc import Callable
 
 import gymnasium as gym
@@ -12,11 +10,20 @@ except ImportError:  # pragma: no cover - fallback for older pufferlib
     import pufferlib.vectorization as pvector
 
 
-def make_cartpole_env(render_mode: str | None = None) -> gym.Env:
+def _make_puffer_env(
+    env_id: str,
+    render_mode: str | None,
+    buf: object | None = None,
+    seed: int = 0,
+) -> gym.Env:
     def creator() -> gym.Env:
-        return gym.make("CartPole-v1", render_mode=render_mode)
+        return gym.make(env_id, render_mode=render_mode)
 
-    return pufferlib.emulation.GymnasiumPufferEnv(env_creator=creator)
+    return pufferlib.emulation.GymnasiumPufferEnv(env_creator=creator, buf=buf, seed=seed)
+
+
+def make_cartpole_env(render_mode: str | None = None, env_id: str = "CartPole-v1") -> gym.Env:
+    return _make_puffer_env(env_id=env_id, render_mode=render_mode)
 
 
 def make_cartpole_vec(
@@ -25,11 +32,10 @@ def make_cartpole_vec(
     render_mode: str | None = None,
     num_workers: int | None = None,
     batch_size: int | None = None,
+    env_id: str = "CartPole-v1",
 ) -> object:
-    def creator() -> gym.Env:
-        return pufferlib.emulation.GymnasiumPufferEnv(
-            env_creator=lambda: gym.make("CartPole-v1", render_mode=render_mode)
-        )
+    def creator(*_args: object, buf: object | None = None, seed: int = 0, **_kwargs: object) -> gym.Env:
+        return _make_puffer_env(env_id=env_id, render_mode=render_mode, buf=buf, seed=seed)
 
     backend_map: dict[str, Callable[..., object]] = {
         "serial": pvector.Serial,
