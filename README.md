@@ -44,38 +44,17 @@ Model-based MPC (learned dynamics + policy + value; MPC samples from policy):
 python -m rl_mpc.algos.mbmpc total_steps=100000 planner.horizon=15 planner.num_sequences=256 env.num_envs=4
 ```
 
-## CleanRL comparison
+## Stable-Baselines3 baseline
 
-Exact CleanRL single-file scripts are vendored:
-- `third_party/cleanrl/v1.0.0/dqn.py`
-- `third_party/cleanrl/v1.0.0/ppo.py`
-
-They use argparse (`--flag` syntax).
-
-Examples:
+Use the lightweight Stable-Baselines3 baseline script (Gymnasium-based):
 ```bash
-python third_party/cleanrl/v1.0.0/dqn.py --env-id CartPole-v1 --total-timesteps 500000
-python third_party/cleanrl/v1.0.0/ppo.py --env-id CartPole-v1 --total-timesteps 500000
+python scripts/sb3_cartpole.py algo=dqn total_timesteps=200000
+python scripts/sb3_cartpole.py algo=ppo total_timesteps=200000 num_envs=4
 ```
 
-Dependencies for the CleanRL script (in addition to this repo's deps):
-- `gymnasium`
-- `stable-baselines3`
-- `tensorboard` (and optional `wandb` if `--track`)
-
-Quick install:
+Optional logging and saving:
 ```bash
-uv pip install gymnasium stable-baselines3 tensorboard
-```
-
-Integration tests (short runs on CartPole):
-```bash
-./scripts/test_cleanrl.sh
-```
-
-You can override defaults:
-```bash
-ENV_ID=CartPole-v1 TOTAL_TIMESTEPS=4096 ./scripts/test_cleanrl.sh
+python scripts/sb3_cartpole.py algo=ppo log_dir=runs/sb3 save_path=sb3_cartpole
 ```
 
 ## Notes
