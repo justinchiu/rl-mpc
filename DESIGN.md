@@ -67,6 +67,33 @@ The interfaces are intentionally small and easy to satisfy with simple MLPs.
 3. Env step produces transitions; transitions go into `ReplayBuffer`.
 4. `Trainer` samples from buffer and updates `policy`, `value`, `dynamics`.
 
+## Composition Diagram
+```
+      +-----------+        +-----------+        +----------------+
+      |   Env(s)  | -----> | Collector | -----> |  Batch (typed) |
+      +-----------+        +-----------+        +----------------+
+                                   |                      |
+                                   v                      v
+                               +---------+          +-----------+
+                               | Policy  |          |  Trainer  |
+                               +---------+          +-----------+
+                                   |                      |
+                                   v                      v
+                              +--------+            +-----------+
+                              | Value  |            | Metrics   |
+                              +--------+            +-----------+
+                                   |
+                                   v
+                              +----------+
+                              | Dynamics |
+                              +----------+
+
+Notes:
+- Batches are BaseModels (e.g., `RolloutBatch`, `TransitionBatch`) for type safety.
+- Trainers return BaseModel metrics; logging consumes `model_dump()`.
+- Objectives are additive: total loss = weighted sum of component losses.
+```
+
 ## Example Composition
 
 ### Random-shooting MPC (known dynamics)
