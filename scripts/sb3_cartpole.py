@@ -5,8 +5,12 @@ from typing import Literal
 import chz
 import gymnasium as gym
 import numpy as np
+import sys
 import time
+sys.modules.setdefault("gym", gym)
+
 from stable_baselines3 import DQN, PPO
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
 
 
@@ -24,6 +28,56 @@ class SB3Config:
     render_deterministic: bool = True
     render_seed: int | None = None
     render_delay_ms: int = 0
+    video_dir: str | None = None
+    video_every_steps: int = 0
+    video_episodes: int = 1
+
+
+class VideoEvalCallback(BaseCallback):
+    def __init__(
+        self,
+        env_id: str,
+        video_dir: str,
+        eval_freq: int,
+        n_eval_episodes: int,
+        seed: int,
+        deterministic: bool,
+    ) -> None:
+        super().__init__()
+        self.env_id = env_id
+        self.video_dir = video_dir
+        self.eval_freq = eval_freq
+        self.n_eval_episodes = n_eval_episodes
+        self.seed = seed
+        self.deterministic = deterministic
+
+    def _on_step(self) -> bool:
+        if self.eval_freq <= 0:
+            return True
+        if self.n_calls % self.eval_freq == 0:
+            self._record(self.num_timesteps)
+        return True
+
+    def _record(self, step: int) -> None:
+        env = gym.make(self.env_id, render_mode="rgb_array")
+        env = gym.wrappers.RecordVideo(
+            env,
+            video_folder=self.video_dir,
+            episode_trigger=lambda _episode: True,
+            name_prefix=f"{self.env_id}_step{step}",
+        )
+        try:
+            for ep in range(self.n_eval_episodes):
+                obs, _ = env.reset(seed=self.seed + ep)
+                done = False
+                truncated = False
+                while not (done or truncated):
+                    action, _ = self.model.predict(obs, deterministic=self.deterministic)
+                    if isinstance(action, np.ndarray):
+                        action = int(action.squeeze())
+                    obs, _reward, done, truncated, _info = env.step(action)
+        finally:
+            env.close()
 
 
 def train(cfg: SB3Config) -> None:
@@ -37,7 +91,18 @@ def train(cfg: SB3Config) -> None:
         verbose=1,
         tensorboard_log=cfg.log_dir,
     )
-    model.learn(total_timesteps=cfg.total_timesteps)
+    callback = None
+    if cfg.video_dir and cfg.video_every_steps > 0:
+        callback = VideoEvalCallback(
+            env_id=cfg.env_id,
+            video_dir=cfg.video_dir,
+            eval_freq=cfg.video_every_steps,
+            n_eval_episodes=cfg.video_episodes,
+            seed=cfg.seed,
+            deterministic=cfg.render_deterministic,
+        )
+
+    model.learn(total_timesteps=cfg.total_timesteps, callback=callback)
     if cfg.save_path:
         model.save(cfg.save_path)
     env.close()

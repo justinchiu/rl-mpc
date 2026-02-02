@@ -62,6 +62,18 @@ Visualize a few trajectories after training:
 python scripts/sb3_cartpole.py algo=ppo total_timesteps=50000 render_episodes=3 render_delay_ms=20
 ```
 
+Record periodic videos during training (to see learning progress):
+```bash
+python scripts/sb3_cartpole.py algo=ppo total_timesteps=200000 video_dir=videos/sb3 video_every_steps=20000 video_episodes=1
+```
+
+Note: video recording uses Gymnasium's `RecordVideo` wrapper; you may need `imageio` and `imageio-ffmpeg` installed.
+
+Streamlit viewer (stacks videos vertically):
+```bash
+streamlit run scripts/streamlit_videos.py
+```
+
 ## Notes
 - PufferLib wraps a Gymnasium CartPole-v1 env; env stepping runs on CPU, while networks can run on GPU via `device=cuda`.
 - MPC uses the CartPole dynamics consistent with Gymnasium's implementation for rollouts.
