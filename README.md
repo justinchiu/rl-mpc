@@ -2,7 +2,7 @@
 
 Minimal baselines for CartPole-v1 using PufferLib vector API + PyTorch:
 - DQN
-- Policy Gradient (REINFORCE)
+- PPO (on-policy, GAE)
 - Random-shooting MPC with known dynamics
 - Model-based MPC with learned dynamics + stochastic policy + value
 
@@ -29,9 +29,14 @@ DQN (vectorized envs supported):
 python -m rl_mpc.algos.dqn total_steps=200000 env.num_envs=8 env.vec_backend=multiprocessing
 ```
 
-Policy Gradient:
+PPO (on-policy, GAE):
 ```bash
-python -m rl_mpc.algos.pg total_episodes=1000 env.num_envs=4 env.vec_backend=multiprocessing
+python -m rl_mpc.algos.ppo total_steps=200000 env.num_envs=4 env.vec_backend=multiprocessing
+```
+
+PPO with W&B logging:
+```bash
+python -m rl_mpc.algos.ppo total_steps=200000 env.num_envs=4 wandb=true wandb_project=rl-mpc
 ```
 
 MPC (random-shooting over action sequences):

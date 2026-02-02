@@ -101,7 +101,7 @@ src/rl_mpc/
     trainer.py
   algos/
     dqn.py
-    pg.py
+    ppo.py
     mpc.py
     mbmpc.py
   envs.py
