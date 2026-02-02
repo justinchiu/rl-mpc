@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from rl_mpc.components.types import RolloutBatch
+from rl_mpc.components.types import RolloutBatch, StepBatch
 
 
 class RolloutBuffer:
@@ -33,6 +33,17 @@ class RolloutBuffer:
         self.rewards[t] = rewards
         self.dones[t] = dones
         self.values[t] = values
+
+    def store_step(self, t: int, step: StepBatch) -> None:
+        self.store(
+            t,
+            step.obs,
+            step.actions,
+            step.logp,
+            step.rewards,
+            step.dones,
+            step.values,
+        )
 
     def compute_advantages(
         self,

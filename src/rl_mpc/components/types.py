@@ -15,6 +15,28 @@ class RolloutBatch(BaseModel):
     values: np.ndarray
 
 
+class StepBatch(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    obs: np.ndarray
+    actions: np.ndarray
+    logp: np.ndarray
+    rewards: np.ndarray
+    dones: np.ndarray
+    values: np.ndarray
+    next_obs: np.ndarray
+
+
+class RolloutChunk(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    obs: np.ndarray
+    actions: np.ndarray
+    logp: np.ndarray
+    rewards: np.ndarray
+    dones: np.ndarray
+    values: np.ndarray
+    next_obs: np.ndarray
+
+
 class TransitionBatch(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     obs: torch.Tensor

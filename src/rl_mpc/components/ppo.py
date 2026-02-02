@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 from torch import nn
 from torch.distributions import Categorical
 
+from rl_mpc.components.batcher import RolloutBatcher
 from rl_mpc.components.types import RolloutBatch
 
 
@@ -55,19 +56,14 @@ class PPOTrainer:
     def update(
         self,
         batch: RolloutBatch,
+        batcher: RolloutBatcher,
         n_epochs: int,
-        batch_size: int,
         normalize_advantage: bool,
-        rng: np.random.Generator,
     ) -> PPOMetrics:
-        obs = batch.obs
-        actions = batch.actions
-        old_logp = batch.logp
         advantages = batch.advantages
-        returns = batch.returns
-
         if normalize_advantage and advantages.size > 1:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+            batch = batch.model_copy(update={"advantages": advantages})
 
         policy_losses: list[float] = []
         value_losses: list[float] = []
@@ -76,49 +72,42 @@ class PPOTrainer:
         approx_kls: list[float] = []
         clip_fracs: list[float] = []
 
-        batch_size_total = obs.shape[0]
-        for _epoch in range(n_epochs):
-            indices = rng.permutation(batch_size_total)
-            for start in range(0, batch_size_total, batch_size):
-                mb_idx = indices[start:start + batch_size]
-                if mb_idx.size == 0:
-                    continue
+        for minibatch in batcher.iter(batch, n_epochs):
+            obs_tensor = torch.as_tensor(minibatch.obs, dtype=torch.float32, device=self.device)
+            actions_tensor = torch.as_tensor(minibatch.actions, dtype=torch.int64, device=self.device)
+            old_logp_tensor = torch.as_tensor(minibatch.logp, dtype=torch.float32, device=self.device)
+            adv_tensor = torch.as_tensor(minibatch.advantages, dtype=torch.float32, device=self.device)
+            returns_tensor = torch.as_tensor(minibatch.returns, dtype=torch.float32, device=self.device)
 
-                obs_tensor = torch.as_tensor(obs[mb_idx], dtype=torch.float32, device=self.device)
-                actions_tensor = torch.as_tensor(actions[mb_idx], dtype=torch.int64, device=self.device)
-                old_logp_tensor = torch.as_tensor(old_logp[mb_idx], dtype=torch.float32, device=self.device)
-                adv_tensor = torch.as_tensor(advantages[mb_idx], dtype=torch.float32, device=self.device)
-                returns_tensor = torch.as_tensor(returns[mb_idx], dtype=torch.float32, device=self.device)
+            logits = self.policy(obs_tensor)
+            dist = Categorical(logits=logits)
+            logp = dist.log_prob(actions_tensor)
+            entropy = dist.entropy().mean()
 
-                logits = self.policy(obs_tensor)
-                dist = Categorical(logits=logits)
-                logp = dist.log_prob(actions_tensor)
-                entropy = dist.entropy().mean()
+            ratio = torch.exp(logp - old_logp_tensor)
+            pg_loss_1 = ratio * adv_tensor
+            pg_loss_2 = torch.clamp(ratio, 1.0 - self.clip_range, 1.0 + self.clip_range) * adv_tensor
+            policy_loss = -torch.min(pg_loss_1, pg_loss_2).mean()
 
-                ratio = torch.exp(logp - old_logp_tensor)
-                pg_loss_1 = ratio * adv_tensor
-                pg_loss_2 = torch.clamp(ratio, 1.0 - self.clip_range, 1.0 + self.clip_range) * adv_tensor
-                policy_loss = -torch.min(pg_loss_1, pg_loss_2).mean()
+            values_pred = self.value(obs_tensor).squeeze(-1)
+            value_loss = 0.5 * (returns_tensor - values_pred).pow(2).mean()
 
-                values_pred = self.value(obs_tensor).squeeze(-1)
-                value_loss = 0.5 * (returns_tensor - values_pred).pow(2).mean()
+            losses = PPOLosses(policy=policy_loss, value=value_loss, entropy=entropy)
+            loss = losses.total(self.vf_coef, self.ent_coef)
 
-                losses = PPOLosses(policy=policy_loss, value=value_loss, entropy=entropy)
-                loss = losses.total(self.vf_coef, self.ent_coef)
+            self.optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+            nn.utils.clip_grad_norm_(self.value.parameters(), self.max_grad_norm)
+            self.optimizer.step()
 
-                self.optimizer.zero_grad(set_to_none=True)
-                loss.backward()
-                nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
-                nn.utils.clip_grad_norm_(self.value.parameters(), self.max_grad_norm)
-                self.optimizer.step()
-
-                with torch.no_grad():
-                    approx_kls.append((old_logp_tensor - logp).mean().item())
-                    clip_fracs.append((torch.abs(ratio - 1.0) > self.clip_range).float().mean().item())
-                policy_losses.append(policy_loss.item())
-                value_losses.append(value_loss.item())
-                entropy_values.append(entropy.item())
-                total_losses.append(loss.item())
+            with torch.no_grad():
+                approx_kls.append((old_logp_tensor - logp).mean().item())
+                clip_fracs.append((torch.abs(ratio - 1.0) > self.clip_range).float().mean().item())
+            policy_losses.append(policy_loss.item())
+            value_losses.append(value_loss.item())
+            entropy_values.append(entropy.item())
+            total_losses.append(loss.item())
 
         return PPOMetrics(
             policy_loss=float(np.mean(policy_losses)) if policy_losses else 0.0,

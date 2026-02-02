@@ -9,10 +9,13 @@ import torch
 from torch.distributions import Categorical
 from tqdm import trange
 
+from rl_mpc.components.batcher import RolloutBatcher
+from rl_mpc.components.collector import OnPolicyCollector
 from rl_mpc.components.env import EnvConfig, make_envs
+from rl_mpc.components.packer import RolloutPacker
 from rl_mpc.components.policy import PolicyConfig, build_policy
 from rl_mpc.components.ppo import PPOTrainer
-from rl_mpc.components.rollout import RolloutBuffer, explained_variance
+from rl_mpc.components.rollout import explained_variance
 from rl_mpc.components.value import ValueConfig, build_value
 from rl_mpc.components.video import VideoConfig, VideoLogger
 from rl_mpc.utils import get_device, set_seed
@@ -96,6 +99,9 @@ def train(cfg: PPOConfig) -> None:
         max_grad_norm=cfg.max_grad_norm,
         device=device,
     )
+    collector = OnPolicyCollector(envs, policy, value, device)
+    packer = RolloutPacker(cfg.rollout_steps, num_envs, obs_dim)
+    batcher = RolloutBatcher(cfg.batch_size, rng)
 
     steps_per_update = cfg.rollout_steps * num_envs
     num_updates = max(1, math.ceil(cfg.total_steps / steps_per_update))
@@ -119,55 +125,24 @@ def train(cfg: PPOConfig) -> None:
     episode_lens = np.zeros(num_envs, dtype=np.int32)
     global_step = 0
 
-    rollout = RolloutBuffer(cfg.rollout_steps, num_envs, obs_dim)
-
     pbar = trange(num_updates, desc="PPO")
     for update in pbar:
+        stream = collector.stream(obs_array, cfg.rollout_steps)
+        rollout, last_obs = packer.pack(stream)
+        obs_array = stream.last_obs if stream.last_obs is not None else last_obs
+        global_step += cfg.rollout_steps * num_envs
+
         completed_returns: list[float] = []
         completed_lens: list[int] = []
-
         for t in range(cfg.rollout_steps):
-            obs_batch = obs_array if obs_array.ndim == 2 else obs_array[None, :]
-            obs_batch = obs_batch.reshape(num_envs, obs_dim)
-
-            with torch.no_grad():
-                obs_tensor = torch.as_tensor(obs_batch, dtype=torch.float32, device=device)
-                logits = policy(obs_tensor)
-                dist = Categorical(logits=logits)
-                actions = dist.sample()
-                log_probs = dist.log_prob(actions)
-                values = value(obs_tensor).squeeze(-1)
-
-            actions_np = actions.cpu().numpy()
-
-            next_obs, rewards, terminals, truncateds, _ = envs.step(actions_np)
-            next_obs_array = np.asarray(next_obs)
-            if next_obs_array.ndim == 1:
-                next_obs_array = next_obs_array[None, :]
-            rewards_array = np.asarray(rewards, dtype=np.float32)
-            dones = np.asarray(terminals, dtype=bool) | np.asarray(truncateds, dtype=bool)
-
-            rollout.store(
-                t,
-                obs_batch,
-                actions_np,
-                log_probs.cpu().numpy(),
-                rewards_array,
-                dones.astype(np.float32),
-                values.cpu().numpy(),
-            )
-
-            episode_returns += rewards_array
+            episode_returns += rollout.rewards[t]
             episode_lens += 1
             for i in range(num_envs):
-                if dones[i]:
+                if rollout.dones[t, i] > 0.0:
                     completed_returns.append(float(episode_returns[i]))
                     completed_lens.append(int(episode_lens[i]))
                     episode_returns[i] = 0.0
                     episode_lens[i] = 0
-
-            obs_array = next_obs_array
-            global_step += num_envs
 
         with torch.no_grad():
             obs_tensor = torch.as_tensor(obs_array, dtype=torch.float32, device=device)
@@ -181,10 +156,9 @@ def train(cfg: PPOConfig) -> None:
         batch = rollout.flatten(advantages, returns)
         metrics = trainer.update(
             batch=batch,
+            batcher=batcher,
             n_epochs=cfg.n_epochs,
-            batch_size=cfg.batch_size,
             normalize_advantage=cfg.normalize_advantage,
-            rng=rng,
         )
         explained = explained_variance(batch.returns, batch.values)
 

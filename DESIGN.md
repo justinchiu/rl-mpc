@@ -92,6 +92,27 @@ Notes:
 - Batches are BaseModels (e.g., `RolloutBatch`, `TransitionBatch`) for type safety.
 - Trainers return BaseModel metrics; logging consumes `model_dump()`.
 - Objectives are additive: total loss = weighted sum of component losses.
+
+## Streaming Collector/Packer/Batcher
+The training loop pulls fixed-length streams of steps and turns them into
+typed batches for optimization:
+
+```
+Trainer (request K steps)
+        |
+        v
+Collector -> StepBatch stream (per step, per env)
+        |
+        v
+Packer -> RolloutBuffer (time-major) + last_obs
+        |
+        v
+Batcher -> RolloutBatch minibatches (flat, shuffled)
+```
+
+This mirrors LLM-style data pipelines: *steps* are streamed, *packed* into
+fixed-length rollouts, then *batched* for SGD. Episode boundaries are carried
+via `done` flags, so rollouts can span multiple episodes safely.
 ```
 
 ## Example Composition
