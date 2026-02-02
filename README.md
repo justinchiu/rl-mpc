@@ -57,6 +57,11 @@ Optional logging and saving:
 python scripts/sb3_cartpole.py algo=ppo log_dir=runs/sb3 save_path=sb3_cartpole
 ```
 
+W&B logging (syncs TensorBoard; defaults `log_dir` to `runs/sb3`):
+```bash
+python scripts/sb3_cartpole.py algo=ppo total_timesteps=200000 wandb=true wandb_project=rl-mpc log_dir=runs/sb3
+```
+
 Visualize a few trajectories after training:
 ```bash
 python scripts/sb3_cartpole.py algo=ppo total_timesteps=50000 render_episodes=3 render_delay_ms=20

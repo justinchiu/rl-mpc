@@ -12,3 +12,4 @@ wheels/
 resources/
 runs/
 videos/
+wandb/

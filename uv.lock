@@ -1720,6 +1720,7 @@ dependencies = [
     { name = "tensorboard" },
     { name = "torch" },
     { name = "tqdm" },
+    { name = "wandb" },
 ]
 
 [package.metadata]
@@ -1734,6 +1735,7 @@ requires-dist = [
     { name = "tensorboard", specifier = ">=2.20.0" },
     { name = "torch", specifier = ">=2.10.0" },
     { name = "tqdm", specifier = ">=4.66.0" },
+    { name = "wandb", specifier = ">=0.17.0" },
 ]
 
 [[package]]

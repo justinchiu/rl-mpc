@@ -10,7 +10,7 @@ import time
 sys.modules.setdefault("gym", gym)
 
 from stable_baselines3 import DQN, PPO
-from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.callbacks import BaseCallback, CallbackList
 from stable_baselines3.common.env_util import make_vec_env
 
 
@@ -24,6 +24,15 @@ class SB3Config:
     device: str = "auto"
     log_dir: str | None = None
     save_path: str | None = None
+    wandb: bool = False
+    wandb_project: str = "rl-mpc"
+    wandb_entity: str | None = None
+    wandb_group: str | None = None
+    wandb_name: str | None = None
+    wandb_tags: tuple[str, ...] = ()
+    wandb_mode: Literal["online", "offline", "disabled"] = "online"
+    wandb_sync_tensorboard: bool = True
+    wandb_save_code: bool = True
     render_episodes: int = 0
     render_deterministic: bool = True
     render_seed: int | None = None
@@ -81,6 +90,9 @@ class VideoEvalCallback(BaseCallback):
 
 
 def train(cfg: SB3Config) -> None:
+    log_dir = cfg.log_dir
+    if cfg.wandb and log_dir is None:
+        log_dir = "runs/sb3"
     env = make_vec_env(cfg.env_id, n_envs=cfg.num_envs, seed=cfg.seed)
     model_cls = DQN if cfg.algo == "dqn" else PPO
     model = model_cls(
@@ -89,23 +101,51 @@ def train(cfg: SB3Config) -> None:
         seed=cfg.seed,
         device=cfg.device,
         verbose=1,
-        tensorboard_log=cfg.log_dir,
+        tensorboard_log=log_dir,
     )
-    callback = None
+    callbacks: list[BaseCallback] = []
     if cfg.video_dir and cfg.video_every_steps > 0:
-        callback = VideoEvalCallback(
-            env_id=cfg.env_id,
-            video_dir=cfg.video_dir,
-            eval_freq=cfg.video_every_steps,
-            n_eval_episodes=cfg.video_episodes,
-            seed=cfg.seed,
-            deterministic=cfg.render_deterministic,
+        callbacks.append(
+            VideoEvalCallback(
+                env_id=cfg.env_id,
+                video_dir=cfg.video_dir,
+                eval_freq=cfg.video_every_steps,
+                n_eval_episodes=cfg.video_episodes,
+                seed=cfg.seed,
+                deterministic=cfg.render_deterministic,
+            )
         )
 
+    if cfg.wandb:
+        try:
+            import wandb
+            from wandb.integration.sb3 import WandbCallback
+        except ImportError as exc:
+            raise RuntimeError(
+                "wandb is enabled but not installed. Add it to dependencies or run "
+                "`uv add wandb`."
+            ) from exc
+        wandb.init(
+            project=cfg.wandb_project,
+            entity=cfg.wandb_entity,
+            group=cfg.wandb_group,
+            name=cfg.wandb_name,
+            tags=list(cfg.wandb_tags) if cfg.wandb_tags else None,
+            sync_tensorboard=cfg.wandb_sync_tensorboard,
+            save_code=cfg.wandb_save_code,
+            config=chz.asdict(cfg),
+            mode=cfg.wandb_mode,
+        )
+        callbacks.append(WandbCallback())
+
+    callback = CallbackList(callbacks) if callbacks else None
     model.learn(total_timesteps=cfg.total_timesteps, callback=callback)
     if cfg.save_path:
         model.save(cfg.save_path)
     env.close()
+
+    if cfg.wandb:
+        wandb.finish()
 
     if cfg.render_episodes > 0:
         render_env = gym.make(cfg.env_id, render_mode="human")
